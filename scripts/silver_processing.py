@@ -106,7 +106,7 @@ def process_silver():
 
         
         # ONE HOT ENCODING
-        # Manual OHE to match previous Pandas schema (e.g. VendorID_1, VendorID_2)
+        # Manual OHE to match previous structured schema (e.g. VendorID_1, VendorID_2)
         # This is robust and ensures Gold layer finds exactly the columns it expects.
         
         # VendorID (1, 2)
