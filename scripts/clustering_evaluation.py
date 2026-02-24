@@ -1,13 +1,13 @@
 import sys
 import os
-import pandas as pd
 import numpy as np
 from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
 import time
+from pyspark.sql import SparkSession
 
-def evaluate_clusters(file_path, model_name):
+def evaluate_clusters(file_path, model_name, spark):
     """
-    Evaluates clustered Parquet files using 5 Metrics:
+    Evaluates clustered Parquet files using 5 Metrics, reading via PySpark.
     1. Silhouette Score 
     2. WSSSE (Inertia proxy)
     3. Calinski-Harabasz Index
@@ -22,21 +22,26 @@ def evaluate_clusters(file_path, model_name):
         
     start_time = time.time()
     
-    # Read data. To prevent OOM on single node during evaluation, we use a stratified sample if needed 
-    # but 50k - 500k rows is easily handled by scikit-learn.
-    df = pd.read_parquet(file_path)
+    # Read data using PySpark
+    df = spark.read.parquet(file_path)
+    total_rows = df.count()
     
-    # Subsample for very slow metrics like Silhouette if dataset is massive (>100k)
-    sample_size = min(len(df), 50000)
-    if sample_size < len(df):
+    # Subsample for very slow metrics like Silhouette if dataset is massive (>50k)
+    sample_size = min(total_rows, 50000)
+    if sample_size < total_rows:
         print(f"  Subsampling {sample_size} rows for metric calculation...")
-        df_sample = df.sample(n=sample_size, random_state=42)
+        fraction = sample_size / total_rows
+        df_sample = df.sample(withReplacement=False, fraction=fraction, seed=42).limit(sample_size)
     else:
         df_sample = df
         
     features = ['trip_distance', 'fare_amount', 'trip_duration_min']
-    X = df_sample[features].values
-    labels = df_sample['prediction'].values
+    
+    print("  Collecting data from PySpark...")
+    rows = df_sample.select(*(features + ['prediction'])).collect()
+    
+    X = np.array([[row[f] for f in features] for row in rows])
+    labels = np.array([row['prediction'] for row in rows])
     
     n_clusters = len(np.unique(labels))
     if n_clusters < 2:
@@ -53,7 +58,6 @@ def evaluate_clusters(file_path, model_name):
     db_score = davies_bouldin_score(X, labels)
     
     print("  Calculating WSSSE proxy (Inertia)...")
-    # WSSSE manually: sum of squared distances to centroid
     wssse = 0
     for k in np.unique(labels):
         cluster_points = X[labels == k]
@@ -61,7 +65,6 @@ def evaluate_clusters(file_path, model_name):
         wssse += np.sum((cluster_points - centroid)**2)
         
     print("  Calculating Cluster Balance (Entropy)...")
-    # Entropy: -sum(p * log(p)) where p is proportion in cluster
     counts = np.bincount(labels)
     probs = counts[counts > 0] / len(labels)
     entropy = -np.sum(probs * np.log(probs))
@@ -69,7 +72,7 @@ def evaluate_clusters(file_path, model_name):
     duration = time.time() - start_time
     
     results_str = f"--- {model_name} Evaluation ---\n"
-    results_str += f"Eval Time: {duration:.2f}s (Sample size: {sample_size})\n"
+    results_str += f"Eval Time: {duration:.2f}s (Sample size: {len(X)})\n"
     results_str += f"Clusters (K): {n_clusters}\n"
     results_str += f"1. Silhouette Score: {silhouette:.4f} (Higher is better, cohesion/separation)\n"
     results_str += f"2. Calinski-Harabasz: {ch_score:.4f} (Higher is better, variance ratio)\n"
@@ -82,7 +85,6 @@ def evaluate_clusters(file_path, model_name):
         
     print(results_str)
     
-    # Save append
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     results_dir = os.path.join(base_dir, "results")
     with open(os.path.join(results_dir, "clustering_evaluation_metrics.txt"), "a") as f:
@@ -92,12 +94,18 @@ if __name__ == "__main__":
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     gold_dir = os.path.join(base_dir, "data", "gold")
     
-    # Clear the file first
     results_file = os.path.join(base_dir, "results", "clustering_evaluation_metrics.txt")
     if os.path.exists(results_file):
         os.remove(results_file)
         
-    # Evaluate whatever clusters we have
-    evaluate_clusters(os.path.join(gold_dir, "clustered_trips_kmeans.parquet"), "Advanced K-Means (Spark)")
-    evaluate_clusters(os.path.join(gold_dir, "clustered_trips_bisecting.parquet"), "Bisecting K-Means (Spark)")
-    evaluate_clusters(os.path.join(gold_dir, "clustered_trips_gmm.parquet"), "Gaussian Mixture Model (Spark)")
+    spark = SparkSession.builder \
+        .appName("Clustering_Evaluation_Loader") \
+        .config("spark.driver.memory", "4g") \
+        .getOrCreate()
+        
+    try:
+        evaluate_clusters(os.path.join(gold_dir, "clustered_trips_kmeans.parquet"), "Advanced K-Means (Spark)", spark)
+        evaluate_clusters(os.path.join(gold_dir, "clustered_trips_bisecting.parquet"), "Bisecting K-Means (Spark)", spark)
+        evaluate_clusters(os.path.join(gold_dir, "clustered_trips_gmm.parquet"), "Gaussian Mixture Model (Spark)", spark)
+    finally:
+        spark.stop()

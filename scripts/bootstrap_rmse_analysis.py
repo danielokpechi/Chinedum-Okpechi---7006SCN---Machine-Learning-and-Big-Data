@@ -103,12 +103,16 @@ def run_analysis():
         print("Generating predictions...")
         predictions = model.transform(test_data)
         
-        # Convert to Pandas (Lite version)
-        print("Collecting predictions to Pandas (prediction, fare_amount only)...")
+        # Convert to NumPy (Lite version)
+        print("Collecting predictions to Python/NumPy (prediction, fare_amount only)...")
         # Ensure we only select necessary cols to save memory
-        pdf = predictions.select("prediction", "fare_amount").toPandas()
+        results = predictions.select("prediction", "fare_amount").collect()
         
-        print(f"Collected {len(pdf)} rows.")
+        preds_array = np.array([row["prediction"] for row in results], dtype=np.float32)
+        actuals_array = np.array([row["fare_amount"] for row in results], dtype=np.float32)
+        
+        n_rows = len(preds_array)
+        print(f"Collected {n_rows} rows.")
         
         # Bootstrap
         print("Starting Bootstrap Analysis (100 iterations)...")
@@ -118,12 +122,15 @@ def run_analysis():
         np.random.seed(42)
         
         for i in range(n_bootstraps):
-            # Sample with replacement
-            sample = pdf.sample(frac=1.0, replace=True)
+            # Sample with replacement using NumPy
+            indices = np.random.choice(n_rows, size=n_rows, replace=True)
+            
+            sample_preds = preds_array[indices]
+            sample_actuals = actuals_array[indices]
             
             # Calculate RMSE
             # RMSE = sqrt(mean((pred - actual)^2))
-            mse = ((sample['prediction'] - sample['fare_amount']) ** 2).mean()
+            mse = np.mean((sample_preds - sample_actuals) ** 2)
             rmse = math.sqrt(mse)
             rmse_values.append(rmse)
             

@@ -1,12 +1,14 @@
 import os
 import time
 import torch
-import pandas as pd
+import sys
 import numpy as np
+from pyspark.sql import SparkSession
 
 def run_pytorch_kmeans():
     """
     Perform K-Means Clustering using PyTorch on Apple Metal GPU (MPS).
+    Reads data using PySpark to avoid Pandas.
     """
     print("\n[GPU] Starting PyTorch K-Means Clustering on MPS...")
     
@@ -26,27 +28,41 @@ def run_pytorch_kmeans():
     input_path = os.path.join(base_dir, "data", "silver", "taxi_features.parquet")
     results_dir = os.path.join(base_dir, "results")
     
+    spark = SparkSession.builder \
+        .appName("PyTorch_GPU_KMeans_Loader") \
+        .config("spark.driver.memory", "8g") \
+        .getOrCreate()
+        
     try:
-        # We read Parquet with Pandas for PyTorch ingestion
-        print("[GPU] Loading dataset into memory...")
+        print("[GPU] Loading dataset into memory using PySpark...")
+        df = spark.read.parquet(input_path)
+        
         # Subset for memory if test run
         if os.environ.get("IS_TEST_RUN"):
-             df = pd.read_parquet(input_path).head(50000)
-        else:
-             df = pd.read_parquet(input_path)
-
+            df = df.limit(50000)
+            
         features = ['trip_distance', 'fare_amount', 'trip_duration_min']
-        X_df = df[features].copy()
+        
+        # Collect to driver as list of rows
+        print("[GPU] Collecting features to driver...")
+        rows = df.select(*features).collect()
+        
+        # Convert to NumPy array
+        X_np = np.array([[row[f] for f in features] for row in rows], dtype=np.float32)
+        
+        print(f"[GPU] Fetched {X_np.shape[0]} rows.")
         
         # Standard Scaler
         print("[GPU] Normalizing data...")
-        X_mean = X_df.mean()
-        X_std = X_df.std()
-        X_scaled = (X_df - X_mean) / X_std
+        X_mean = np.mean(X_np, axis=0)
+        X_std = np.std(X_np, axis=0)
+        # Prevent division by zero
+        X_std[X_std == 0] = 1.0
+        X_scaled = (X_np - X_mean) / X_std
         
         # Send to GPU
         print("[GPU] Moving data to Metal MPS...")
-        X_tensor = torch.tensor(X_scaled.values, dtype=torch.float32).to(device)
+        X_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(device)
         
         # PyTorch K-Means implementation
         k = 5
@@ -63,8 +79,7 @@ def run_pytorch_kmeans():
         start_time = time.time()
         
         for i in range(max_iter):
-            # Calculate Euclidean distances: ||x - c||^2 = ||x||^2 + ||c||^2 - 2<x,c>
-            # Vectorized for GPU speed
+            # Calculate Euclidean distances
             distances = torch.cdist(X_tensor, centroids, p=2.0)
             
             # Predict clusters
@@ -113,6 +128,8 @@ def run_pytorch_kmeans():
         print(f"[GPU] Error: {e}")
         import traceback
         traceback.print_exc()
+    finally:
+        spark.stop()
 
 if __name__ == "__main__":
     run_pytorch_kmeans()

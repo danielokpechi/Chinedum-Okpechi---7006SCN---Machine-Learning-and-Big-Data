@@ -136,7 +136,14 @@ def process_gold():
         gold_file = os.path.join(output_dir_gold, "hourly_stats.parquet")
         hourly_stats.write.mode("overwrite").parquet(gold_file)
         
-        hourly_stats.toPandas().to_csv(os.path.join(tableau_dir, "dashboard_hourly_gold.csv"), index=False)
+        import csv
+        results = hourly_stats.collect()
+        csv_path = os.path.join(tableau_dir, "dashboard_hourly_gold.csv")
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["pickup_hour", "avg_fare", "avg_dist", "avg_duration", "trip_count"])
+            for row in results:
+                writer.writerow([row["pickup_hour"], row["avg_fare"], row["avg_dist"], row["avg_duration"], row["trip_count"]])
         
         print("[GOLD] Complete.")
 

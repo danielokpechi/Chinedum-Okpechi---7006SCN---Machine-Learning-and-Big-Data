@@ -66,7 +66,7 @@ else:
 
 
 # 2. Verify Dependencies
-required_packages = ['numpy', 'pandas', 'pyarrow']
+required_packages = ['numpy', 'pyarrow']
 print("\nVerifying dependencies...")
 for pkg in required_packages:
     try:
