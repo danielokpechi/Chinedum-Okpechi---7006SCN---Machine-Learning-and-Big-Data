@@ -1,0 +1,8 @@
+{
+    "bootstrap_rmse_mean": 0.10492080455265565,
+    "bootstrap_rmse_std": 0.0012921853322068867,
+    "ci_95_lower": 0.10246321196063696,
+    "ci_95_upper": 0.10761479584870494,
+    "n_bootstraps": 100,
+    "description": "Bootstrap confidence intervals represent the range in which the true RMSE is likely to fall 95% of the time if we were to resample the test data. A narrow CI indicates high model stability."
+}

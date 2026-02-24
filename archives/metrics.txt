@@ -1,0 +1,6 @@
+Model Evaluation Metrics
+========================
+CV RMSE (Mean): 0.1197
+Test RMSE:      0.1100
+Test MAE:       0.0198
+Test R2:        0.8035

@@ -1,0 +1,13 @@
+K-Means Hyperparameter Exploration:
+k=3 | Silhouette: 0.9089 | Time: 3.04s
+k=4 | Silhouette: 0.9213 | Time: 0.96s
+k=5 | Silhouette: 0.6851 | Time: 1.15s
+k=6 | Silhouette: 0.7109 | Time: 1.15s
+
+Best K: 4 with Silhouette: 0.9213
+
+Best Model Cluster Centers (Distance, Fare, Duration - Scaled):
+[2.36686268 2.35377137 0.74357   ]
+[1.00682147e-02 1.00101403e-01 3.51850004e+01]
+[-0.26076597 -0.26083506 -0.10827865]
+[14.50577846 17.6760319   2.42217164]

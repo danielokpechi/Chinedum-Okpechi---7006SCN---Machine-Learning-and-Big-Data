@@ -1,0 +1,21 @@
+FINAL MODEL SELECTION REPORT
+============================
+
+1. MODEL PERFORMANCE SUMMARY
+------------------------------
+Model                          | RMSE       | R2        
+--------------------------------------------------------
+Linear Regression (SGD)        | >1000      | <0        
+Random Forest (Base)           | 0.1100     | 0.8035    
+Random Forest (Tuned)          | 0.1005     | 0.8358    
+
+2. SELECTED MODEL
+------------------------------
+The selected model is: RANDOM FOREST (TUNED)
+Reason: It achieved the lowest RMSE (0.1005) and highest R2 (0.8358).
+The parameter tuning process yielded a significant improvement over the base configuration.
+
+3. DEPLOYMENT RECOMMENDATION
+------------------------------
+Deploy the Tuned Random Forest model using the hyperparameters in 'results/best_params.txt'.
+Ensure input data is preprocessed with the exact same Scaling and Encoding steps.

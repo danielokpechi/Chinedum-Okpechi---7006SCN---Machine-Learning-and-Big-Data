@@ -1,0 +1,8 @@
+--- Cluster Stability Test (Bootstrapping) ---
+Total Time: 2.36s
+Bootstraps: 10
+Clusters (K): 4
+Mean Centroid Shift: 30.901811 (Standardized units)
+Shift Std Dev: 37.746299
+
+CONCLUSION: The clusters show structural instability.

@@ -1,0 +1,8 @@
+Cross-Validation Results
+========================
+
+Parameters: {'n_estimators': 119, 'max_depth': 13, 'random_state': 42, 'n_jobs': -1, 'min_samples_split': 7}
+
+RMSE Mean: 0.0897 (+/- 0.0149)
+MAPE Mean: 0.2363 (+/- 0.0183)
+Expl Var Mean: 0.8685 (+/- 0.0392)

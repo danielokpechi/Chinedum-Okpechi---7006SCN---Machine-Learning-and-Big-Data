@@ -1,0 +1,30 @@
+{
+    "baseline_model": "LinearRegression",
+    "baseline_rmse": 0.18745,
+    "best_model": "GBTRegressor",
+    "best_model_rmse": 0.10496,
+    "best_model_training_time": 98.58190488815308,
+    "detailed_comparison": [
+        {
+            "Model": "LinearRegression",
+            "RMSE": 0.18745,
+            "Improvement_Absolute": 0.0,
+            "Improvement_Pct": 0.0
+        },
+        {
+            "Model": "RandomForestRegressor",
+            "RMSE": 0.11371,
+            "Improvement_Absolute": 0.07374,
+            "Improvement_Pct": 39.33849026407042
+        },
+        {
+            "Model": "GBTRegressor",
+            "RMSE": 0.10496,
+            "Improvement_Absolute": 0.08249000000000001,
+            "Improvement_Pct": 44.0064017071219,
+            "Training_Time_Sec": 98.58190488815308,
+            "Gain_Per_Sec": 0.000836766139725031
+        }
+    ],
+    "explanation": "Cost-performance analysis quantifies the trade-off between model accuracy and computational cost. In Big Data contexts, marginal gains in accuracy (e.g., 1%) often require exponential increases in compute time. 'Gain per second' helps justify the investment in complex models like GBT over simple baselines."
+}

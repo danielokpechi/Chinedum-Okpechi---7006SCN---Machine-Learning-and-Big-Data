@@ -1,0 +1,18 @@
+# Ignore datasets and large data files
+data/
+*.csv
+*.parquet
+
+# Ignore compiled python files
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# macOS specific
+.DS_Store
+
+# Ignore environment variables
+.env

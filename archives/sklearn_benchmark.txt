@@ -1,0 +1,4 @@
+Scikit-Learn Baseline (Rows=100000)
+--------------------------------------------------
+LinearRegression: Time=0.0235s, RMSE=198.1842
+RandomForest:     Time=0.2212s, RMSE=5.5023

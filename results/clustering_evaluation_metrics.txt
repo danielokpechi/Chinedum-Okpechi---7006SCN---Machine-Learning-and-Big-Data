@@ -1,0 +1,44 @@
+--- Advanced K-Means (Spark) Evaluation ---
+Eval Time: 18.91s (Sample size: 50000)
+Clusters (K): 4
+1. Silhouette Score: 0.7671 (Higher is better, cohesion/separation)
+2. Calinski-Harabasz: 135076.2395 (Higher is better, variance ratio)
+3. Davies-Bouldin: 0.4350 (Lower is better, cluster similarity)
+4. WSSSE: 10891635.5520 (Lower is better, compactness)
+5. Cluster Entropy: 0.3275 (Balances cluster sizes)
+
+   Cluster 0 Size: 4846 (9.7%)
+   Cluster 1 Size: 35 (0.1%)
+   Cluster 2 Size: 45099 (90.2%)
+   Cluster 3 Size: 20 (0.0%)
+
+--- Bisecting K-Means (Spark) Evaluation ---
+Eval Time: 15.55s (Sample size: 50000)
+Clusters (K): 5
+1. Silhouette Score: 0.3963 (Higher is better, cohesion/separation)
+2. Calinski-Harabasz: 4828.0184 (Higher is better, variance ratio)
+3. Davies-Bouldin: 0.9598 (Lower is better, cluster similarity)
+4. WSSSE: 71537323.8377 (Lower is better, compactness)
+5. Cluster Entropy: 1.3336 (Balances cluster sizes)
+
+   Cluster 0 Size: 19990 (40.0%)
+   Cluster 1 Size: 15673 (31.3%)
+   Cluster 2 Size: 9650 (19.3%)
+   Cluster 3 Size: 2017 (4.0%)
+   Cluster 4 Size: 2670 (5.3%)
+
+--- Gaussian Mixture Model (Spark) Evaluation ---
+Eval Time: 17.72s (Sample size: 50000)
+Clusters (K): 5
+1. Silhouette Score: 0.6057 (Higher is better, cohesion/separation)
+2. Calinski-Harabasz: 29813.0759 (Higher is better, variance ratio)
+3. Davies-Bouldin: 1.1186 (Lower is better, cluster similarity)
+4. WSSSE: 29294661.9966 (Lower is better, compactness)
+5. Cluster Entropy: 0.5922 (Balances cluster sizes)
+
+   Cluster 0 Size: 7032 (14.1%)
+   Cluster 1 Size: 40959 (81.9%)
+   Cluster 2 Size: 56 (0.1%)
+   Cluster 3 Size: 360 (0.7%)
+   Cluster 4 Size: 1593 (3.2%)
+
