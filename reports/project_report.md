@@ -38,6 +38,7 @@ Stage 2 (Supervised Learning) integrates these personas into a Gradient Boosted 
 
 
 
+
 Table of Contents
 Abstract
 1. Introduction
@@ -59,6 +60,13 @@ Abstract
 6.3 Real-Time Insights and Recommendations
 7. Conclusion & Future Work
 8. References
+[1] Databricks. (2021). "What is a Medallion Architecture?". Databricks Glossary. Available at: https://www.databricks.com/glossary/medallion-architecture
+[2] Greenwald, M., & Khanna, S. (2001). "Space-efficient online computation of quantile summaries." ACM SIGMOD Record, 30(2), 58-66.
+[3] Armbrust, M., et al. (2015). "Spark SQL: Relational data processing in Spark." Proceedings of the 2015 ACM SIGMOD International Conference on Management of Data.
+[4] Rousseeuw, P. J. (1987). "Silhouettes: A graphical aid to the interpretation and validation of cluster analysis." Journal of Computational and Applied Mathematics, 20, 53-65.
+[5] Friedman, J. H. (2001). "Greedy function approximation: a gradient boosting machine." Annals of Statistics, 1189-1232.
+[6] Lundberg, S. M., & Lee, S. I. (2017). "A unified approach to interpreting model predictions." Advances in Neural Information Processing Systems, 30.
+[7] NYC Taxi & Limousine Commission. (2023). "Yellow Taxi Trip Records." NYC Open Data. Available at: https://data.cityofnewyork.us/Transportation/2023-Yellow-Taxi-Trip-Data/4b4i-vvec.
 9. AI Use Declaration
 10. Appendices
 Appendix A: Project Repository & Dashboard Links
@@ -70,8 +78,11 @@ Appendix D: Project Folder Structure
 Appendix E: Command to Run the Model
 
 
-
-
+Table of Figures
+Figure 1: Data Quality
+Figure 2: Scalability and Computational Efficiency
+Figure 3: Model Performance
+Figure 4: Temporal Demand Behaviour Analysis
 
 1. Introduction
 Urban mobility systems, particularly in large metropolitan areas such as New York City, generate vast amounts of data from taxi trips, including fare amounts, trip distances, timestamps, and geospatial data. The ability to predict taxi fares is critical for optimizing operational efficiencies, improving fare transparency, and enhancing dynamic pricing models. However, the sheer scale of data involved often poses challenges for traditional, single-node machine learning models.
@@ -82,24 +93,32 @@ Fare Prediction: A supervised learning approach using Gradient Boosted Trees (GB
 This study focuses on addressing key challenges associated with big data processing, ensuring minimal computational costs while maintaining high model accuracy.
 
 2. Data Engineering & Preprocessing (Medallion Architecture)
-A Medallion Architecture was employed to handle raw data ingestion, feature engineering, and model input preparation efficiently. This architecture is widely used for processing big data, ensuring smooth data transitions across stages while preserving lineage and error handling.
+A Medallion Architecture [1] was employed to handle raw data ingestion, feature engineering, and model input preparation efficiently. This architecture is widely used for processing big data, ensuring smooth data transitions across stages while preserving lineage and error handling.
 2.1 Bronze Tier: Raw Ingestion via RDD Parallelization
 Raw data was initially ingested using Resilient Distributed Datasets (RDDs) instead of high-level DataFrames to create a fault-tolerant, explicitly distributed ingestion pipeline. The raw CSV data was loaded into memory as highly partitioned text blocks using sparkContext.textFile().
-Data Ingestion:
-The raw data was ingested directly from the CSV files using RDDs for low-level, parallel processing. The data was split by comma delimiters, and each partitioned RDD was processed independently across the cluster. This ensured that the large dataset was handled efficiently in a distributed manner, allowing for high scalability and fault tolerance in the ingestion process.
-Quality Checks:
-To ensure schema integrity and dynamically filter out malformed data blocks, explicit RDD transformations like filter() and map() were applied in parallel across the worker nodes. These transformations enforced strict column-length consistency by comparing the records against the dynamic header array. Any corrupted data shards, which could arise due to network disruptions during file transfer, were discarded at this stage.
-A Broadcast Hash Join was then used to merge the TLC Taxi Zone lookup table with the trip data. This operation broadcasts the smaller lookup table to all executors, effectively minimizing costly network shuffle operations, which speeds up large-scale relational joins.
+**Modelled Function (RDD Parallel Ingestion & Schema Enforcing):**
+```python
+# Discussed Approach: Bypassing standard DataFrame reading to enforce schema 
+# strictly via RDD parallelization across workers before DataFrame conversion
+raw_rdd = spark.sparkContext.textFile(input_file)
+header = raw_rdd.first()
+expected_cols = len(header.split(","))
+
+data_rdd = raw_rdd.filter(lambda line: line != header) \
+                  .map(lambda line: line.split(",")) \
+                  .filter(lambda cols: len(cols) == expected_cols)
+                  
+df = spark.createDataFrame(data_rdd, schema=schema)
+```
+Data ingestion was explicitly engineered using low-level Resilient Distributed Datasets (RDDs) via sparkContext.textFile() rather than the standard .csv() DataFrame reader. The core reasoning is fault tolerance and explicit parallelization: by keeping the data as raw partitioned text blocks, we can apply functional .map() operations distributed across executor threads to split the strings, and .filter() operations to forcefully drop any records where the column count does not match the header (len(cols) == expected_cols). This ensures that corrupted data streams or partial file loads do not crash the downstream createDataFrame generation, establishing a scalable, indestructible entry point for the pipeline.
 
 2.2 Exploratory Data Analysis (EDA)
-Before constructing the predictive engines, rigorous Exploratory Data Analysis (EDA) was conducted iteratively to understand the underlying distributions, identify skewness, and empirically establish data cleaning thresholds. The approach utilized PySpark DataFrames to perform distributed aggregations across the massive dataset.
-
+Before constructing the predictive models, rigorous Exploratory Data Analysis (EDA) was conducted iteratively to understand the underlying distributions, identify skewness, and empirically establish data cleaning thresholds. The approach leveraged PySpark DataFrames to perform distributed aggregations across the massive dataset.
 Univariate Analysis Strategy:
-The primary approach was to examine the raw distributions of core numerical continuous variables (e.g., fare_amount, trip_distance, trip_duration_min). Given financial data inherently suffers from severe positive right-skew (containing extreme high-value outliers and illogical negative records), specific quantile approximations (approxQuantile) were calculated to establish mathematically justified clipping boundaries.
-
-Modelled Function (Distribution Profiling):
+The primary approach was to examine the raw distributions of core numerical continuous variables (e.g., fare_amount, trip_distance, trip_duration_min). Financial data, in particular, tends to suffer from severe positive right-skew, with extreme high-value outliers and illogical negative records. To address this, specific quantile approximations(approxQuantile) were calculated to establish mathematically justified clipping boundaries.
+**Modelled Function (Distribution Profiling):**
 ```python
-# Extracting the 1% and 99% quantiles to define statistical 
+# Extracting the 1% and 99% quantiles to define statistical
 # thresholds for outlier removal, ensuring the model trains on representative behavior.
 quantiles = df.approxQuantile("fare_amount", [0.01, 0.99], 0.01)
 lower_bound, upper_bound = quantiles[0], quantiles[1]
@@ -107,16 +126,12 @@ lower_bound, upper_bound = quantiles[0], quantiles[1]
 # Filtering out extreme outliers based on the calculated inter-quantile ranges
 df_filtered = df.filter((col("fare_amount") >= lower_bound) & (col("fare_amount") <= upper_bound))
 ```
-
-Discussion of the Applied Modeled Function:
-The `approxQuantile` function is a highly optimized Catalyst operation designed for distributed DataFrames where exact sorting of 37 million rows is computationally prohibitive. By passing a relative error argument of `0.01` (1%), Spark computes a tightly bounded approximation of the 1st and 99th percentiles using the Greenwald-Khanna algorithm behind the scenes. This specific approach avoids Out-Of-Memory (OOM) errors that a standard Pandas `.quantile()` call would trigger, while returning the required threshold boundaries dynamically. The subsequent `filter()` function then utilizes these calculated variables to enforce logical bounds on continuous numerical columns.
-
+The approxQuantile function is a highly optimized Catalyst operation designed for distributed DataFrames where exact sorting of 37 million rows would be computationally prohibitive. By passing a relative error argument of 0.01 (1%), Spark computes a tightly bounded approximation of the 1st and 99th percentiles using the Greenwald-Khanna algorithm [2]. This approach avoids Out-Of-Memory (OOM) errors that a standard Pandas .quantile() call might trigger, while returning the required threshold boundaries dynamically. The subsequent filter() function then enforces logical bounds on continuous numerical columns, removing extreme outliers.
 Bivariate Analysis Strategy:
-Following isolated variable profiling, bivariate correlation matrices were computed to identify multicollinearity and establish the predictive power of features against the target fare_amount. The PySpark MLlib Correlation.corr function was implemented over Vector-Assembled dense dataframes to calculate Pearson correlation coefficients at scale. This directly informed feature selection, leading to the deliberate removal of mathematically redundant features (like total_amount which leaks the true fare_amount).
-
-Modelled Function (Correlation Matrix):
+After profiling individual variables, bivariate correlation matrices were computed to identify multicollinearity and evaluate the predictive power of features against the target variable (fare_amount). The PySpark MLlib Correlation.corrfunction was applied to vector-assembled dense DataFrames, allowing us to calculate Pearson correlation coefficients at scale. This directly informed feature selection, leading to the deliberate removal of mathematically redundant features, such as total_amount, which leaks the true fare_amount.
+**Modelled Function (Correlation Matrix):**
 ```python
-# Assembling numerical features into a single Vector to 
+# Assembling numerical features into a single Vector to
 # compute the Pearson correlation matrix using Spark MLlib, identifying collinearity.
 from pyspark.ml.stat import Correlation
 from pyspark.ml.feature import VectorAssembler
@@ -128,10 +143,8 @@ df_vector = assembler.transform(df_filtered)
 pearson_matrix = Correlation.corr(df_vector, "corr_features").head()[0]
 print(pearson_matrix.toArray())
 ```
-
-Discussion of the Applied Modeled Function:
-Unlike standard statistical libraries that can ingest raw columns, PySpark MLlib's linear algebra engine requires standardized input formats. Therefore, the `VectorAssembler` transformer is first applied to concatenate multiple scalar columns into a single `Vector` type column (`corr_features`). The `Correlation.corr` modeled function then consumes this vectorized column, distributing the complex $\mathcal{O}(n^2)$ pairwise covariance math across worker nodes. It returns a dense `DenseMatrix` object. We extract the array via `.head()[0].toArray()` to analyze multicollinearity, directly guiding the removal of leaky variables before the machine learning stages.
-
+**Discussion of the Applied Modeled Function:**
+Unlike standard statistical libraries that ingest raw columns, PySpark MLlib's linear algebra engine requires input data to be in a standardized format. Therefore, the VectorAssembler transformer is first applied to concatenate multiple scalar columns into a single Vector type column (corr_features). The Correlation.corr function then processes this vectorized column, distributing the pairwise covariance calculations across worker nodes. The result is a dense DenseMatrix object. We extract the correlation matrix using .head()[0].toArray() for analysis. This process helps to detect multicollinearity, directly guiding the removal of redundant or leaky variables before advancing to the machine learning stages.
 2.3 Silver Tier: Vectorized Cleaning & Feature Construction
 In the Silver Tier, the data is cleaned and transformed into useful features for downstream modeling. This stage includes both feature extraction and the creation of predictive features.
 Key tasks include:
@@ -142,19 +155,23 @@ Geospatial features were added to denote fare zones and pick-up/drop-off points,
 Standardization: All continuous features were standardized using PySpark’s StandardScaler to ensure each feature had a mean of 0 and a standard deviation of 1. This was done to make the features more compatible with algorithms like Gradient Boosted Trees and improve model training stability.
 2.4 Gold Tier: Business-Level Aggregates
 The Gold Tier represents the final stage of data transformation, where high-level, business-oriented aggregates are calculated. These features are used in the downstream models for fare prediction.
-In this tier:
-Aggregates: Aggregates like average fare amounts per zone, average trip distance, and passenger count per time of day were calculated. These aggregates are critical for understanding overall business trends and were used as features in the final machine learning models.
-Output for Downstream Models: The final feature set was saved as a Parquet file, ready for use in clustering and regression models. These transformed features provided the business insights necessary to predict taxi fares accurately.
+Modelled Function (Distributed GroupBy Aggregations):
+# Discussed Approach: Using PySpark SQL functions to group massive datasets # efficiently by temporal partitions to generate business-level metrics
+ from pyspark.sql.functions import avg, count
+hourly_stats = df.groupBy("pickup_hour").agg( avg("fare_amount").alias("avg_fare"), avg("trip_distance").alias("avg_dist"), avg("trip_duration_min").alias("avg_duration"), count("*").alias("trip_count")).orderBy("pickup_hour")
+**Discussion of the Applied Modeled Function:** 
+To synthesize 37 million records into actionable dashboard metrics, the groupBy().agg() function was modeled. In a distributed environment, standard grouping induces massive data shuffling across the network. By utilizing PySpark's native aggregation functions (avg and count), the Catalyst optimizer forces partial aggregations on each executor node before the network shuffle occurs (Map-Side Combine) [3]. This drastically reduces network bottlenecking, allowing us to compute macroscopic temporal demand trends (average fare, volume counts per hour) rapidly for business dashboard exports.**Discussion of the Applied Modeled Function:** To synthesize 37 million records into actionable dashboard metrics, the groupBy().agg() function was modeled. In a distributed environment, standard grouping induces massive data shuffling across the network. By utilizing PySpark's native aggregation functions (avg and count), the Catalyst optimizer forces partial aggregations on each executor node before the network shuffle occurs (Map-Side Combine) [3]. This drastically reduces network bottlenecking, allowing us to compute macroscopic temporal demand trends (average fare, volume counts per hour) rapidly for business dashboard exports.
 
+
+Figure 1: Data Quality 
 The Fare Distribution and Trip Distance Distribution in Dashboard 1 offer a clear visual representation of the data's distribution, aiding in the identification of outliers and potential anomalies.
-
 3. Scalable Clustering Implementation (Stage 1)
-Clustering is a critical step in segmenting the data into meaningful “Mobility Personas.” This allows us to understand distinct passenger behavior patterns, which are essential for downstream fare prediction models. Given the scale of the NYC Yellow Taxi dataset (37.3 million records), we needed to implement scalable clustering algorithms that could handle this volume of data efficiently.
+Clustering is a critical step in segmenting the data into meaningful “Mobility Personas.” This allows us to understand distinct passenger behavior patterns, which are essential for downstream fare prediction models. Given the scale of the NYC Yellow Taxi dataset (37.3 million records) [7], we needed to implement scalable clustering algorithms that could handle this volume of data efficiently.
 To achieve this, three clustering algorithms were implemented in PySpark MLlib, along with a custom GPU-accelerated K-Means implementation using Apple Metal Performance Shaders (MPS) to further boost performance. This combination ensures that we can process large datasets in a reasonable time frame while achieving good clustering accuracy.
 3.1 PySpark MLlib Implementations
 To begin with, the following clustering algorithms were implemented in PySpark MLlib, a distributed machine learning library that scales well for large datasets.
 Advanced K-Means:
-K-Means clustering is a widely used algorithm for partitioning data into k clusters. For our dataset, we implemented Advanced K-Means, optimizing it through a parallel grid search to find the optimal number of clusters. The optimal k was determined to be 4 based on the Silhouette Score of 0.92, indicating that the clusters were well-separated.
+K-Means clustering is a widely used algorithm for partitioning data into k clusters. For our dataset, we implemented Advanced K-Means, optimizing it through a parallel grid search to find the optimal number of clusters. The optimal k was determined to be 4 based on the Silhouette Score [4] of 0.92, indicating that the clusters were well-separated.
 Time Complexity: The time complexity of K-Means is O(n⋅k⋅d)O(n⋅k⋅d), where n is the number of data points, k is the number of clusters, and d is the number of features. To enhance efficiency, we used Spark’s distributed computing capabilities to parallelize this process across multiple nodes.
 Bisecting K-Means:
 Bisecting K-Means is a hierarchical version of the standard K-Means algorithm. It splits data into two clusters at each step, recursively dividing the data. This was particularly useful for datasets with hierarchical structures, as it allowed the model to uncover latent behavioral patterns that might be missed by traditional K-Means.
@@ -185,9 +202,26 @@ Trade-Off Analysis:
 A balance was struck between the computational cost (particularly during hyperparameter optimization) and the benefits in model accuracy.
 Model Complexity: More complex models, such as GBT, provided better accuracy but came at a higher computational cost compared to simpler models like Linear Regression and Random Forest.
 
+Figure 2: Scalability and Computational Efficiency
 Dashboard 4 provides insights into scalability and computational efficiency. It highlights the performance of different models under Strong and Weak Scaling conditions, alongside the cost-performance trade-off analysis.
 5. Model Evaluation & Semantic Selection (Stage 2)
 5.1 Evaluation Metrics & Results
+**Modelled Function (MLlib Algorithm Pipeline):**
+```python
+# Discussed Approach: Vectorizing features and combining them with the 
+# Gradient Boosted Trees algorithm inside a unified MLlib Pipeline.
+from pyspark.ml import Pipeline
+from pyspark.ml.feature import VectorAssembler, StandardScaler
+from pyspark.ml.regression import GBTRegressor
+
+assembler = VectorAssembler(inputCols=final_features, outputCol="features_raw")
+scaler = StandardScaler(inputCol="features_raw", outputCol="features")
+gbt = GBTRegressor(labelCol="fare_amount", featuresCol="features", maxIter=20)
+
+pipeline = Pipeline(stages=[assembler, scaler, gbt])
+model = pipeline.fit(train)
+```
+Supervised modeling was executed utilizing PySpark's Pipeline object. This was strictly necessary to avoid data leakage between the training and validation sets in a distributed cluster. By chaining the VectorAssembler (mapping all columns to a dense tensor), StandardScaler, and the GBTRegressor into a single Pipeline, the fit() command sequentially builds the transformation rules utilizing only the training partition statistics. The GBTRegressor itself was selected for its exceptional ability to handle non-linear decision boundaries through sequential boosting [5], overcoming the simplistic linear patterns that baseline models fall trap to.
 The performance of the models was evaluated using three key metrics:
 RMSE (Root Mean Squared Error): Measures the square root of the average squared differences between predicted and actual values. Lower values indicate better model performance.
 R² (Coefficient of Determination): Measures the proportion of variance explained by the model. Values closer to 1 indicate that the model explains a large proportion of the variance in the data.
@@ -229,11 +263,13 @@ GBT has the lowest RMSE, the highest R², and the lowest MAE, indicating that it
 Linear Regression showed the worst performance across all metrics, which suggests that it does not capture the complexity of the fare prediction task as effectively as the other models.
 Random Forest performed better than Linear Regression but did not match the performance of GBT.
 
+Figure 3: Model Performance 
 Displays the GBT Model RMSE and Actual vs Predicted plot.
 6. Business Insights & Predictive Synergy (Stage 2)
 The ultimate goal of the project is to not only predict taxi fares accurately but also provide actionable business insights that can optimize operational decision-making. By segmenting passengers into distinct Mobility Personas using clustering techniques, we can understand the different travel behaviors and preferences that influence fare amounts. These insights can then be used to improve fare pricing models, resource allocation, and operational strategies.
 In this section, we explore how the discovered Mobility Personas can enhance fare prediction accuracy and drive business insights. We also examine how the Gradient Boosted Trees (GBT) model, which was selected for fare prediction, can be leveraged to optimize taxi operations.
 
+Figure 4: Temporal Demand Behaviour Analysis 
 Dashboard 3 captures the Temporal Demand Patterns, helping to understand the hourly variation in trip volume, average fare, and trip distance. These insights can be used to predict demand peaks and optimize resource allocation.
 6.2 Optimizing Fare Structures and Resource Allocation
 With the GBT model predicting fare amounts based on Mobility Personas, the following business applications can be realized:
@@ -251,7 +287,6 @@ Targeted Promotions:
 Insights from the Mobility Personas can guide targeted promotions and offers. For example, offering loyalty bonuses or discounts to frequent commuters or business travelers, enhancing customer retention.
 Operational Dashboards:
 The Tableau dashboards created for this project (e.g., Temporal Demand Patterns and Scalability and Computational Efficiency) offer a real-time view of fare trends, demand forecasting, and resource usage. This allows operators to make data-driven decisions about where to allocate resources, adjust pricing, or identify inefficiencies in the system.
-
 7. Conclusion & Future Work
 This project demonstrates the successful application of machine learning techniques to predict taxi fares using the NYC Yellow Taxi dataset. The pipeline developed utilizes both unsupervised learning (for clustering passengers into distinct Mobility Personas) and supervised learning (for fare prediction using Gradient Boosted Trees). The key achievements and contributions of this work include:
 Effective Clustering: The identification of Mobility Personas through advanced clustering techniques (Advanced K-Means, Bisecting K-Means, and Gaussian Mixture Models) provides valuable insights into passenger behavior. These insights were integrated into the fare prediction model, improving accuracy and allowing for dynamic pricing strategies.
@@ -259,15 +294,21 @@ Scalable Machine Learning Pipeline: The pipeline, built on PySpark and GPU-accel
 Model Performance: The Gradient Boosted Trees (GBT) model outperformed other models (Linear Regression and Random Forest) with an RMSE of $8.08 and an R² of 0.82, making it the best choice for fare prediction in this context.
 Business Applications: The model has practical business value in taxi operations, offering insights into dynamic fare pricing, demand forecasting, and resource allocation. The insights derived from the Mobility Personas can drive real-time decision-making and optimize operational efficiency.
 8. References
-NYC Taxi & Limousine Commission Trip Record Data (2023 Yellow Taxi), accessed from NYC Open Data. URL: https://data.cityofnewyork.us/Transportation/2023-Yellow-Taxi-Trip-Data/4b4i-vvec.
-Databricks, “Optimizing Spark for Large-Scale Data Processing,” Databricks Blog, 2021.
-PyTorch Documentation, “Metal Performance Shaders (MPS),” PyTorch, 2021.
-J. Smith, et al., “Distributed Machine Learning for Big Data: A Review,” IEEE Transactions on Big Data, vol. 9, no. 4, 2022.
+[1] Databricks. (2021). "What is a Medallion Architecture?". Databricks Glossary. Available at: https://www.databricks.com/glossary/medallion-architecture
+[2] Greenwald, M., & Khanna, S. (2001). "Space-efficient online computation of quantile summaries." ACM SIGMOD Record, 30(2), 58-66.
+[3] Armbrust, M., et al. (2015). "Spark SQL: Relational data processing in Spark." Proceedings of the 2015 ACM SIGMOD International Conference on Management of Data.
+[4] Rousseeuw, P. J. (1987). "Silhouettes: A graphical aid to the interpretation and validation of cluster analysis." Journal of Computational and Applied Mathematics, 20, 53-65.
+[5] Friedman, J. H. (2001). "Greedy function approximation: a gradient boosting machine." Annals of Statistics, 1189-1232.
+[6] Lundberg, S. M., & Lee, S. I. (2017). "A unified approach to interpreting model predictions." Advances in Neural Information Processing Systems, 30.
+[7] NYC Taxi & Limousine Commission. (2023). "Yellow Taxi Trip Records." NYC Open Data. Available at: https://data.cityofnewyork.us/Transportation/2023-Yellow-Taxi-Trip-Data/4b4i-vvec.
 9. AI Use Declaration
 I declare that this report and its associated code are my original work.
 AI Use Declaration: I used AI conversational agents (ChatGPT/Claude) in an Amber category assistance capacity. Specifically:
 Code: AI helped with debugging PySpark Java pathing issues and optimizing PyTorch MPS matrix distance calculations. All core logic was modified and validated by me.
 Text: AI refined the report structure and provided clarity on scalability benchmarks and clustering metrics.
+
+
+
 
 
 
@@ -748,4 +789,22 @@ predict_custom_fare.py: This script handles the prediction logic by accepting cu
 --distance 20: Sets the trip distance in miles.
 --duration 10: Defines the trip duration in minutes.
 This command will output the predicted fare based on the trained model, helping users to get fare predictions for different trip parameters.
+
+**6.4 Algorithmic Transparency (SHAP Values)**
+
+**Modelled Function (SHAP Tree Explainer):**
+```python
+# Discussed Approach: Using SHapley Additive exPlanations (SHAP) to interpret 
+# the 'black-box' Random Forest / GBT models and provide feature transparency
+import shap
+
+# Generating SHAP values for the ensemble tree model
+explainer = shap.TreeExplainer(rf_model)
+shap_values = explainer.shap_values(X_test_sample)
+
+# Outputting the influence summary plot
+shap.summary_plot(shap_values, X_test_sample, feature_names=feature_cols)
+```
+
+Advanced ensemble algorithms like Gradient Boosted Trees represent "black boxes," making their predictions difficult to justify to business stakeholders. To establish ethical transparency and algorithmic trust, SHapley Additive exPlanations (SHAP) [6] were implemented. Derived from cooperative game theory, the shap.TreeExplainer function was selected specifically because it mathematically breaks down the exact marginal contribution of every single feature in polynomial time. By passing a representative test matrix to shap_values(), we generated a unified vector array revealing exactly how features like trip_distance and categorical Mobility Personas interact to push the final predicted fare price up or down. This eliminates heuristic guesswork and definitively proves the model's physical logic to taxi dispatchers.
 
