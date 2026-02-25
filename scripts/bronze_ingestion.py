@@ -27,17 +27,33 @@ def ingest_bronze():
         .getOrCreate()
 
     try:
-        print(f"Reading raw CSV from {input_file}...")
+        print(f"Reading raw CSV from {input_file} explicitly via RDDs for low-level parallelization...")
         
-        # Read with schema inference disabled (read as strings) just like a true raw landing zone.
-        # mode="DROPMALFORMED" ensures we handle any parsing errors by skipping bad lines.
-        df = spark.read.option("header", "true") \
-            .option("inferSchema", "false") \
-            .option("mode", "DROPMALFORMED") \
-            .csv(input_file)
+        # 1. Read as RDD of text lines
+        raw_rdd = spark.sparkContext.textFile(input_file)
+        
+        # 2. Extract header
+        header = raw_rdd.first()
+        
+        # 3. Filter out the header and malformed rows using RDD transformations (parallel processing)
+        # Specifically dropping rows that don't have the correct number of comma-separated columns
+        expected_cols = len(header.split(","))
+        
+        # RDD Transformation: filter -> map
+        data_rdd = raw_rdd.filter(lambda line: line != header) \
+                          .map(lambda line: line.split(",")) \
+                          .filter(lambda cols: len(cols) == expected_cols)
+                          
+        # 4. Convert back to DataFrame using the schema from the header
+        from pyspark.sql.types import StructType, StructField, StringType
+        
+        schema_fields = [StructField(col_name.strip('\"'), StringType(), True) for col_name in header.split(",")]
+        schema = StructType(schema_fields)
+        
+        df = spark.createDataFrame(data_rdd, schema=schema)
             
         count = df.count()
-        print(f"Ingested {count} rows.")
+        print(f"Ingested {count} rows via RDD parallel processing.")
         
         print(f"Saving to Bronze (Parquet): {output_dir}")
         df.write.mode("overwrite").parquet(output_dir)
