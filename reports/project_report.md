@@ -47,11 +47,8 @@ Abstract
 3.2 Silver Tier: Vectorized Cleaning & Feature Construction
 3.3 Gold Tier: Business-Level Aggregates
 3. Scalable Clustering Implementation (Stage 1)
-4.1 PySpark MLlib Implementations
-4.2 GPU Acceleration & Hardware Benchmarking (Custom PyTorch MPS)
 4. Scalability & Cost-Performance Analysis
-5.1 Distributed Partitioning (Strong vs Weak Scaling)
-5.2 Cost-Performance Trade-Off
+4.1 Cost-Performance Trade-Off
 5. Model Evaluation & Semantic Selection (Stage 2)
 5.1 Evaluation Metrics & Results
 5.2 Model Comparison
@@ -71,9 +68,45 @@ Abstract
 10. Appendices
 Appendix A: Project Repository & Dashboard Links
 Appendix B: Core Code Snippets
+Appendix C: Advanced Clustering & Hardware Scalability Analysis
 Bronze Tier: Raw Ingestion
 Silver Tier: Cleaning & Feature Engineering
 Gold Tier: Business Aggregates / Regression Prep
+Appendix C: Advanced Clustering & Hardware Scalability Analysis
+(The detailed technical extension for Section 3 and Section 4.1).
+
+C.1 Scalable Clustering Implementation (Stage 1)
+Clustering is a critical step in segmenting the data into meaningful “Mobility Personas.” This allows us to understand distinct passenger behavior patterns, which are essential for downstream fare prediction models. Given the scale of the NYC Yellow Taxi dataset (37.3 million records) [7], we needed to implement scalable clustering algorithms that could handle this volume of data efficiently.
+To achieve this, three clustering algorithms were implemented in PySpark MLlib, along with a custom GPU-accelerated K-Means implementation using Apple Metal Performance Shaders (MPS) to further boost performance. This combination ensures that we can process large datasets in a reasonable time frame while achieving good clustering accuracy.
+
+C.2 PySpark MLlib Implementations
+To begin with, the following clustering algorithms were implemented in PySpark MLlib, a distributed machine learning library that scales well for large datasets.
+Advanced K-Means:
+K-Means clustering is a widely used algorithm for partitioning data into k clusters. For our dataset, we implemented Advanced K-Means, optimizing it through a parallel grid search to find the optimal number of clusters. The optimal k was determined to be 4 based on the Silhouette Score [4] of 0.92, indicating that the clusters were well-separated.
+Time Complexity: The time complexity of K-Means is O(n⋅k⋅d)O(n⋅k⋅d), where n is the number of data points, k is the number of clusters, and d is the number of features. To enhance efficiency, we used Spark’s distributed computing capabilities to parallelize this process across multiple nodes.
+Bisecting K-Means:
+Bisecting K-Means is a hierarchical version of the standard K-Means algorithm. It splits data into two clusters at each step, recursively dividing the data. This was particularly useful for datasets with hierarchical structures, as it allowed the model to uncover latent behavioral patterns that might be missed by traditional K-Means.
+Gaussian Mixture Models (GMM):
+GMM is a probabilistic clustering technique that assumes data is generated from a mixture of several Gaussian distributions. This model was particularly useful for identifying clusters that overlap, as it provides soft assignments for each data point. We used GMM to capture overlapping clusters of passenger behavior that might not be strictly separable.
+
+C.3 GPU Acceleration & Hardware Benchmarking (Custom PyTorch MPS)
+In order to further accelerate clustering and overcome limitations with traditional CPU processing, we developed a custom GPU-accelerated implementation of the K-Means algorithm using Apple Metal Performance Shaders (MPS). This solution leverages GPU Unified Memory, which allows the CPU and GPU to share memory, bypassing costly memory transfer operations between the two.
+GPU Acceleration:
+The GPU implementation leverages parallel matrix multiplication in GPU memory to compute distances between data points more efficiently. This approach significantly improves scalability, particularly when handling large datasets like the NYC Yellow Taxi dataset.
+Benchmarking:
+The custom GPU-based K-Means implementation was benchmarked against the traditional scikit-learn CPUimplementation. The results were promising:
+The GPU solution clustered 50,000 observations in 23.9 seconds, which was far superior to the scikit-learn CPU baseline, which struggled with memory constraints and took considerably longer for the same operation.
+The use of Apple Unified Memory minimized latency and memory transfer costs, which are often bottlenecks in large-scale machine learning tasks.
+
+C.4 Distributed Partitioning (Strong vs Weak Scaling)
+The scalability of the clustering and prediction models was evaluated using strong and weak scaling techniques. Both tests assess the system's ability to handle increasing amounts of data with the same or increasing resources.
+Strong Scaling:
+Strong scaling measures the system’s ability to maintain performance as the problem size remains constant while increasing the number of resources (e.g., more partitions, more executors).
+Observation: As partition sizes increased from 50 to 100 partitions, we observed improved performance. However, beyond this threshold, performance degradation was noted due to shuffle and scheduling overheads. This indicates that the model is sensitive to the number of partitions and that optimization is necessary beyond a certain point.
+Weak Scaling:
+Weak scaling, on the other hand, measures the system’s ability to handle an increasing dataset size with proportionally increased resources (e.g., adding more nodes or CPUs as the data grows).
+Observation: The model showed linear scalability—as the dataset fraction increased, training time grew proportionally, which indicates good horizontal scalability. This means that the pipeline can handle larger datasets effectively, as performance is maintained across increasing data sizes.
+
 Appendix D: Project Folder Structure
 Appendix E: Command to Run the Model
 
@@ -175,39 +208,15 @@ To synthesize 37 million records into actionable dashboard metrics, the groupBy(
 **Figure 1: Data Quality** 
 The Fare Distribution and Trip Distance Distribution in Dashboard 1 offer a clear visual representation of the data's distribution, aiding in the identification of outliers and potential anomalies.
 3. Scalable Clustering Implementation (Stage 1)
-Clustering is a critical step in segmenting the data into meaningful “Mobility Personas.” This allows us to understand distinct passenger behavior patterns, which are essential for downstream fare prediction models. Given the scale of the NYC Yellow Taxi dataset (37.3 million records) [7], we needed to implement scalable clustering algorithms that could handle this volume of data efficiently.
-To achieve this, three clustering algorithms were implemented in PySpark MLlib, along with a custom GPU-accelerated K-Means implementation using Apple Metal Performance Shaders (MPS) to further boost performance. This combination ensures that we can process large datasets in a reasonable time frame while achieving good clustering accuracy.
-3.1 PySpark MLlib Implementations
-To begin with, the following clustering algorithms were implemented in PySpark MLlib, a distributed machine learning library that scales well for large datasets.
-Advanced K-Means:
-K-Means clustering is a widely used algorithm for partitioning data into k clusters. For our dataset, we implemented Advanced K-Means, optimizing it through a parallel grid search to find the optimal number of clusters. The optimal k was determined to be 4 based on the Silhouette Score [4] of 0.92, indicating that the clusters were well-separated.
+Clustering segmented the 37.3 million records into distinct passenger behavior patterns ("Mobility Personas"). Three distributed PySpark MLlib algorithms (Advanced K-Means, Bisecting K-Means, GMM) were engineered, alongside a custom GPU-accelerated implementation utilizing Apple Metal Performance Shaders (MPS). 
+*Note: For the exhaustive technical analysis regarding the Time Complexity, GPU Code Benchmarking, and Strong vs. Weak Scalability tests, please refer to **Appendix C: Advanced Clustering & Hardware Scalability Analysis**, which contains the full breakdown.*
 
 **[INSERT IMAGE HERE: `results/plots/kmeans_clusters.png`]**
 **Figure 3: PySpark K-Means Cluster Distribution**
-*Discussion of Output:* This visual output validates the Advanced K-Means model's geographical partitioning of the dataset. The distinct, color-coded groupings visually confirm the mathematical segmentation into "Mobility Personas" (e.g., short inner-city business hops vs. long-haul airport trips). The tight, non-overlapping visual boundaries physically corroborate the exceptionally high Silhouette Score (0.92), proving the algorithm successfully converged on highly cohesive patterns within the 37 million record datalake.
-Time Complexity: The time complexity of K-Means is O(n⋅k⋅d)O(n⋅k⋅d), where n is the number of data points, k is the number of clusters, and d is the number of features. To enhance efficiency, we used Spark’s distributed computing capabilities to parallelize this process across multiple nodes.
-Bisecting K-Means:
-Bisecting K-Means is a hierarchical version of the standard K-Means algorithm. It splits data into two clusters at each step, recursively dividing the data. This was particularly useful for datasets with hierarchical structures, as it allowed the model to uncover latent behavioral patterns that might be missed by traditional K-Means.
-Gaussian Mixture Models (GMM):
-GMM is a probabilistic clustering technique that assumes data is generated from a mixture of several Gaussian distributions. This model was particularly useful for identifying clusters that overlap, as it provides soft assignments for each data point. We used GMM to capture overlapping clusters of passenger behavior that might not be strictly separable.
-3.2 GPU Acceleration & Hardware Benchmarking (Custom PyTorch MPS)
-In order to further accelerate clustering and overcome limitations with traditional CPU processing, we developed a custom GPU-accelerated implementation of the K-Means algorithm using Apple Metal Performance Shaders (MPS). This solution leverages GPU Unified Memory, which allows the CPU and GPU to share memory, bypassing costly memory transfer operations between the two.
-GPU Acceleration:
-The GPU implementation leverages parallel matrix multiplication in GPU memory to compute distances between data points more efficiently. This approach significantly improves scalability, particularly when handling large datasets like the NYC Yellow Taxi dataset.
-Benchmarking:
-The custom GPU-based K-Means implementation was benchmarked against the traditional scikit-learn CPUimplementation. The results were promising:
-The GPU solution clustered 50,000 observations in 23.9 seconds, which was far superior to the scikit-learn CPU baseline, which struggled with memory constraints and took considerably longer for the same operation.
-The use of Apple Unified Memory minimized latency and memory transfer costs, which are often bottlenecks in large-scale machine learning tasks.
+*Discussion of Output:* This visual output validates the Advanced K-Means model's geographical partitioning of the dataset. The distinct, color-coded groupings visually confirm the mathematical segmentation into "Mobility Personas" (e.g., short inner-city business hops vs. long-haul airport trips). The tight, non-overlapping visual boundaries physically corroborate the exceptionally high Silhouette Score (0.92).
+
 4. Scalability & Cost-Performance Analysis
-4.1 Distributed Partitioning (Strong vs Weak Scaling)
-The scalability of the clustering and prediction models was evaluated using strong and weak scaling techniques. Both tests assess the system's ability to handle increasing amounts of data with the same or increasing resources.
-Strong Scaling:
-Strong scaling measures the system’s ability to maintain performance as the problem size remains constant while increasing the number of resources (e.g., more partitions, more executors).
-Observation: As partition sizes increased from 50 to 100 partitions, we observed improved performance. However, beyond this threshold, performance degradation was noted due to shuffle and scheduling overheads. This indicates that the model is sensitive to the number of partitions and that optimization is necessary beyond a certain point.
-Weak Scaling:
-Weak scaling, on the other hand, measures the system’s ability to handle an increasing dataset size with proportionally increased resources (e.g., adding more nodes or CPUs as the data grows).
-Observation: The model showed linear scalability—as the dataset fraction increased, training time grew proportionally, which indicates good horizontal scalability. This means that the pipeline can handle larger datasets effectively, as performance is maintained across increasing data sizes.
-4.2 Cost-Performance Trade-Off
+4.1 Cost-Performance Trade-Off
 The cost-performance trade-off analysis evaluates how much computational cost is required for additional accuracy in the model’s predictions. This is especially important in large-scale systems, where computing power can become expensive.
 Cost Metric: We used a cost-performance metric to measure the additional accuracy gained per unit of computational cost. The idea was to assess how much improvement in model performance (in terms of RMSE or R²) was achieved by increasing the computational resources, such as CPU/GPU time or memory.
 Gradient Boosted Trees (GBT) provided the best accuracy in fare prediction, but the hyperparameter tuning process required significant computational resources. The additional computation cost for tuning GBT was justified by the marginal gains in accuracy, particularly when it reduced the RMSE by a substantial amount. The Test RMSE was $8.08, with an R² of 0.82, showing a good balance between accuracy and cost.
@@ -346,6 +355,7 @@ Dashboard 4: Scalability and Computational Efficiency
 
 
 Appendix B: Core Code Snippets
+Appendix C: Advanced Clustering & Hardware Scalability Analysis
 This section contains the Python scripts used for the Bronze, Silver, and Gold layers of the Medallion Architecture.
 1. Bronze Tier: Raw Ingestion
 File: scripts/bronze_ingestion.py
@@ -766,6 +776,41 @@ if __name__ == "__main__":
 
 
 
+
+Appendix C: Advanced Clustering & Hardware Scalability Analysis
+(The detailed technical extension for Section 3 and Section 4.1).
+
+C.1 Scalable Clustering Implementation (Stage 1)
+Clustering is a critical step in segmenting the data into meaningful “Mobility Personas.” This allows us to understand distinct passenger behavior patterns, which are essential for downstream fare prediction models. Given the scale of the NYC Yellow Taxi dataset (37.3 million records) [7], we needed to implement scalable clustering algorithms that could handle this volume of data efficiently.
+To achieve this, three clustering algorithms were implemented in PySpark MLlib, along with a custom GPU-accelerated K-Means implementation using Apple Metal Performance Shaders (MPS) to further boost performance. This combination ensures that we can process large datasets in a reasonable time frame while achieving good clustering accuracy.
+
+C.2 PySpark MLlib Implementations
+To begin with, the following clustering algorithms were implemented in PySpark MLlib, a distributed machine learning library that scales well for large datasets.
+Advanced K-Means:
+K-Means clustering is a widely used algorithm for partitioning data into k clusters. For our dataset, we implemented Advanced K-Means, optimizing it through a parallel grid search to find the optimal number of clusters. The optimal k was determined to be 4 based on the Silhouette Score [4] of 0.92, indicating that the clusters were well-separated.
+Time Complexity: The time complexity of K-Means is O(n⋅k⋅d)O(n⋅k⋅d), where n is the number of data points, k is the number of clusters, and d is the number of features. To enhance efficiency, we used Spark’s distributed computing capabilities to parallelize this process across multiple nodes.
+Bisecting K-Means:
+Bisecting K-Means is a hierarchical version of the standard K-Means algorithm. It splits data into two clusters at each step, recursively dividing the data. This was particularly useful for datasets with hierarchical structures, as it allowed the model to uncover latent behavioral patterns that might be missed by traditional K-Means.
+Gaussian Mixture Models (GMM):
+GMM is a probabilistic clustering technique that assumes data is generated from a mixture of several Gaussian distributions. This model was particularly useful for identifying clusters that overlap, as it provides soft assignments for each data point. We used GMM to capture overlapping clusters of passenger behavior that might not be strictly separable.
+
+C.3 GPU Acceleration & Hardware Benchmarking (Custom PyTorch MPS)
+In order to further accelerate clustering and overcome limitations with traditional CPU processing, we developed a custom GPU-accelerated implementation of the K-Means algorithm using Apple Metal Performance Shaders (MPS). This solution leverages GPU Unified Memory, which allows the CPU and GPU to share memory, bypassing costly memory transfer operations between the two.
+GPU Acceleration:
+The GPU implementation leverages parallel matrix multiplication in GPU memory to compute distances between data points more efficiently. This approach significantly improves scalability, particularly when handling large datasets like the NYC Yellow Taxi dataset.
+Benchmarking:
+The custom GPU-based K-Means implementation was benchmarked against the traditional scikit-learn CPUimplementation. The results were promising:
+The GPU solution clustered 50,000 observations in 23.9 seconds, which was far superior to the scikit-learn CPU baseline, which struggled with memory constraints and took considerably longer for the same operation.
+The use of Apple Unified Memory minimized latency and memory transfer costs, which are often bottlenecks in large-scale machine learning tasks.
+
+C.4 Distributed Partitioning (Strong vs Weak Scaling)
+The scalability of the clustering and prediction models was evaluated using strong and weak scaling techniques. Both tests assess the system's ability to handle increasing amounts of data with the same or increasing resources.
+Strong Scaling:
+Strong scaling measures the system’s ability to maintain performance as the problem size remains constant while increasing the number of resources (e.g., more partitions, more executors).
+Observation: As partition sizes increased from 50 to 100 partitions, we observed improved performance. However, beyond this threshold, performance degradation was noted due to shuffle and scheduling overheads. This indicates that the model is sensitive to the number of partitions and that optimization is necessary beyond a certain point.
+Weak Scaling:
+Weak scaling, on the other hand, measures the system’s ability to handle an increasing dataset size with proportionally increased resources (e.g., adding more nodes or CPUs as the data grows).
+Observation: The model showed linear scalability—as the dataset fraction increased, training time grew proportionally, which indicates good horizontal scalability. This means that the pipeline can handle larger datasets effectively, as performance is maintained across increasing data sizes.
 
 Appendix D: Project Folder Structure
 The project is organized into the following directory structure to support modularity, reusability, and clear separation of different components of the machine learning pipeline:
