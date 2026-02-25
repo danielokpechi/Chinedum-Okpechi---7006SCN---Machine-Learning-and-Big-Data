@@ -70,18 +70,39 @@ def process_gold():
         assembler = VectorAssembler(inputCols=final_features, outputCol="features_raw", handleInvalid="skip")
         scaler = StandardScaler(inputCol="features_raw", outputCol="features", withStd=True, withMean=True)
         
+        # INCREASE GBT COMPLEXITY FOR HIGHER R2 (Target > 0.82)
+        gbt = GBTRegressor(labelCol="fare_amount", featuresCol="features", seed=42)
+        
+        from pyspark.ml.tuning import ParamGridBuilder, CrossValidator
+        
+        # Define hyperparameter grid for GBT
+        paramGrid = (ParamGridBuilder()
+                     .addGrid(gbt.maxDepth, [5, 10])     # Increased depth allows capturing more complex interactions
+                     .addGrid(gbt.maxIter, [20, 50])     # More boosting iterations
+                     .build())
+                     
+        evaluator_rmse = RegressionEvaluator(labelCol="fare_amount", predictionCol="prediction", metricName="rmse")
+        evaluator_r2 = RegressionEvaluator(labelCol="fare_amount", predictionCol="prediction", metricName="r2")
+        evaluator_mae = RegressionEvaluator(labelCol="fare_amount", predictionCol="prediction", metricName="mae")
+
+        # Set up 3-fold Cross Validation for GBT
+        cv = CrossValidator(estimator=gbt,
+                            estimatorParamMaps=paramGrid,
+                            evaluator=evaluator_rmse,
+                            numFolds=3,
+                            seed=42)
+
         # DEFINE ALGORITHMS TO COMPARE
         algos = [
             ("LinearRegression", LinearRegression(labelCol="fare_amount", featuresCol="features", maxIter=10, regParam=0.3, elasticNetParam=0.8)),
             ("RandomForest", RandomForestRegressor(labelCol="fare_amount", featuresCol="features", numTrees=20, maxDepth=10, seed=42)),
-            ("GBT", GBTRegressor(labelCol="fare_amount", featuresCol="features", maxIter=20, maxDepth=5, seed=42))
+            ("GBT_Tuned", cv) # Replaced plain GBT with the tuned CrossValidator version
         ]
         
         best_model_name = None
         best_pipeline_model = None
         best_rmse = float('inf')
         
-        evaluator = RegressionEvaluator(labelCol="fare_amount", predictionCol="prediction", metricName="rmse")
         results_str = "Model Comparison Results:\n"
         
         print("\n--- Training & Evaluating Models ---")
@@ -95,17 +116,21 @@ def process_gold():
             
             # Evaluate on Val
             predictions = model.transform(val)
-            rmse = evaluator.evaluate(predictions)
+            rmse = evaluator_rmse.evaluate(predictions)
+            r2 = evaluator_r2.evaluate(predictions)
+            mae = evaluator_mae.evaluate(predictions)
             print(f"  > Validation RMSE: {rmse:.4f}")
+            print(f"  > Validation R2:   {r2:.4f}")
+            print(f"  > Validation MAE:  {mae:.4f}")
             
-            results_str += f"{name}: RMSE={rmse:.4f}\n"
+            results_str += f"{name}: RMSE={rmse:.4f}, R2={r2:.4f}, MAE={mae:.4f}\n"
             
             if rmse < best_rmse:
                 best_rmse = rmse
                 best_pipeline_model = model
                 best_model_name = name
         
-        print(f"\n🏆 Best Model: {best_model_name} with RMSE: {best_rmse:.4f}")
+        print(f"\n🏆 Best Model: {best_model_name} with Validation RMSE: {best_rmse:.4f}")
         results_str += f"\nWINNER: {best_model_name}"
         
         # SAVE BEST MODEL
@@ -121,7 +146,7 @@ def process_gold():
         # FINAL TEST EVALUATION
         print("Evaluating Best Model on TEST set...")
         test_pred = best_pipeline_model.transform(test)
-        test_rmse = evaluator.evaluate(test_pred)
+        test_rmse = evaluator_rmse.evaluate(test_pred)
         print(f"Test RMSE: {test_rmse:.4f}")
 
         # TABLEAU AGGREGATION

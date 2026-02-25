@@ -1,0 +1,6 @@
+Model Comparison Results:
+LinearRegression: RMSE=6.7589, R2=0.8779, MAE=4.3875
+RandomForest: RMSE=5.5305, R2=0.9182, MAE=1.0897
+GBT_Tuned: RMSE=5.9929, R2=0.9040, MAE=1.4076
+
+WINNER: RandomForest
