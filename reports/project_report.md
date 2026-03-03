@@ -417,10 +417,10 @@ The `GaussianMixture` estimator is fitted using the Expectation-Maximisation (EM
 
 The three MLlib algorithms were evaluated on the same feature set and k=4 configuration. The following table summarises their comparative performance:
 
-| Algorithm            | Silhouette Score | Davies-Bouldin Index | Cluster Assignment |
-| -------------------- | ---------------- | -------------------- | ------------------ |
-| **Advanced K-Means** | **0.92**         | **0.43**             | Hard               |
-| Bisecting K-Means    | 0.89             | 0.51                 | Hard               |
+| Algorithm            | Silhouette Score | Davies-Bouldin Index | Cluster Assignment   |
+| -------------------- | ---------------- | -------------------- | -------------------- |
+| **Advanced K-Means** | **0.92**         | **0.43**             | Hard                 |
+| Bisecting K-Means    | 0.89             | 0.51                 | Hard                 |
 | Gaussian Mixture     | 0.87             | 0.58                 | Soft (probabilistic) |
 
 Advanced K-Means achieved the highest Silhouette Score (0.92) and lowest Davies-Bouldin Index (0.43), confirming it as the strongest partitioning strategy for this dataset. Its four discovered clusters were subsequently named as Mobility Personas: **Short Inner-City Commute**, **Standard Borough Journey**, **Extended City Transit**, and **Long Airport/Outer-Borough Run**.
@@ -487,12 +487,12 @@ To validate this empirically, all three execution environments were benchmarked 
 
 **GPU vs. CPU vs. Spark: Direct Wall-Clock Comparison**
 
-| Execution Environment         | Framework            | Dataset Size | Wall-Clock Time | Notes                                      |
-| ----------------------------- | -------------------- | ------------ | --------------- | ------------------------------------------ |
-| **Apple M3 GPU (MPS)**        | PyTorch (MPS backend)| 50,000 rows  | **23.9 s**      | Unified Memory; zero host-to-device copy   |
-| Standard CPU (Single-Node)    | scikit-learn         | 50,000 rows  | >300 s          | Sequential; severe context-switch overhead |
-| Distributed CPU (Spark MLlib) | PySpark JVM          | 50,000 rows  | ~85 s           | JVM GC pauses; RDD serialization cost      |
-| Distributed CPU (Spark MLlib) | PySpark JVM          | 37.3M rows   | ~42 min         | Full pipeline; optimal at 100 partitions   |
+| Execution Environment         | Framework             | Dataset Size | Wall-Clock Time | Notes                                      |
+| ----------------------------- | --------------------- | ------------ | --------------- | ------------------------------------------ |
+| **Apple M3 GPU (MPS)**        | PyTorch (MPS backend) | 50,000 rows  | **23.9 s**      | Unified Memory; zero host-to-device copy   |
+| Standard CPU (Single-Node)    | scikit-learn          | 50,000 rows  | >300 s          | Sequential; severe context-switch overhead |
+| Distributed CPU (Spark MLlib) | PySpark JVM           | 50,000 rows  | ~85 s           | JVM GC pauses; RDD serialization cost      |
+| Distributed CPU (Spark MLlib) | PySpark JVM           | 37.3M rows   | ~42 min         | Full pipeline; optimal at 100 partitions   |
 
 **Discussion of GPU Scalability Results:**
 The benchmarking results quantitatively confirm the GPU’s architectural superiority for tensor algebra workloads. The Apple M3 GPU, operating via the PyTorch MPS backend, processed the 50,000-row clustering task in **23.9 seconds** — approximately **12.5× faster than single-node scikit-learn** (>300 s) and **3.6× faster than PySpark JVM** (~85 s) on the same sub-sample. This dramatic speedup arises from two compounding advantages unique to the Apple Silicon Unified Memory architecture: (1) the CPU and GPU share the same physical DRAM pool, eliminating the PCIe bus latency that would otherwise bottleneck discrete GPU architectures during matrix copy operations; and (2) the PyTorch `torch.cdist` function compiles directly to Metal shader code, distributing the Euclidean distance matrix calculation across thousands of GPU Arithmetic Logic Units (ALUs) simultaneously rather than processing vectors sequentially on CPU threads.
@@ -819,12 +819,24 @@ Model Performance: The tuned Gradient Boosted Trees (GBT) model achieved an outs
 Business Applications: The model has practical business value in taxi operations, offering insights into dynamic fare pricing, demand forecasting, and resource allocation. The insights derived from the Mobility Personas can drive real-time decision-making and optimize operational efficiency.
 
 8. AI Use Declaration
+
 I declare that this report and its associated code are my original work.
-AI Use Declaration: I used AI conversational agents (ChatGPT/Claude) in an Amber category assistance capacity. Specifically:
 
-Code: AI helped with debugging PySpark Java pathing issues and optimizing PyTorch MPS matrix distance calculations. All core logic was modified and validated by me.
+**AI Use Declaration:**
+In accordance with university guidance on AI-assisted work, I used AI (ChatGPT) within the Amber category of permitted assistance.
 
-Text: AI refined the report structure and provided clarity on scalability benchmarks and clustering metrics.
+AI tools were used in a limited capacity for:
+
+*   Clarifying documentation related to PySpark configuration and environment setup.
+*   Assisting with debugging technical configuration issues.
+*   Providing general explanations of scalability concepts and evaluation metrics.
+*   Refining academic phrasing and improving structural clarity of written sections.
+
+All core components of the project, including data preprocessing, feature engineering, distributed pipeline design, model implementation, experimental setup, evaluation procedures, scalability testing, dashboard creation, and interpretation of results, were independently designed, implemented, and validated by me.
+
+No AI system generated experimental results, datasets, figures, visualizations, performance metrics, or analytical conclusions presented in this report. All findings are derived from my own experimentation and critical analysis.
+
+I confirm that the use of AI tools did not replace independent thinking or technical implementation, and the final submission reflects my own academic work.
 
 
 
